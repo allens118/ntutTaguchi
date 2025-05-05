@@ -1,0 +1,24 @@
+# Python 虛擬環境
+venv/
+taguchi_env/
+
+# Python 編譯暫存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 作業系統暫存
+.DS_Store
+Thumbs.db
+
+# log 檔
+*.log
+
+# 個人設定
+.env
+*.env
+
+# 其他常見忽略
+.idea/
+.vscode/ 
