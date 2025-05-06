@@ -124,6 +124,7 @@ class MQTTManager:
                             self.data_buffer[sensor_type] = self.data_buffer[sensor_type][-100:]
                         
                         logger.info(f"更新 {sensor_type} 原始數據: {value}")
+                        logger.info(f"當前 {sensor_type} 緩衝區大小: {len(self.data_buffer[sensor_type])}")
                     except ValueError:
                         logger.error(f"原始數據格式錯誤: {payload}")
                 
@@ -191,6 +192,7 @@ class TaguchiUI:
                 'rpm': base_value + noise,
                 'current': base_value * 0.4 + random.uniform(-20, 20)
             }
+        logger.info(f"生成感測器數據 - 因子: {factor}, 水準: {level}, 數據: {data}")
     
     def run(self):
         """運行UI"""
@@ -390,14 +392,27 @@ class TaguchiUI:
             st.write("水準 2: 30 bar")
             st.write("水準 3: 35 bar")
             
+            # 添加水準選擇器
+            level_a = st.selectbox("選擇水準", ["1", "2", "3"], key="level_a")
+            
             if st.button("設定因子 A"):
                 st.session_state.experiment_settings['current_factor'] = 'A'
                 st.session_state.experiment_settings['experiment_running'] = True
-                # 發布控制因子設定到 MQTT
+                # 根據選擇的水準發布對應的值
+                level_values = {"1": "25", "2": "30", "3": "35"}
                 st.session_state.mqtt_manager.client.publish(
                     "jetsion/taguchi/device001/control_factors/A",
-                    "25"  # 預設使用水準 1 的值
+                    level_values[level_a]
                 )
+                # 收集當前數據到 level_history
+                current_data = st.session_state.mqtt_manager.get_data()
+                if current_data:
+                    logger.info(f"收集因子 A 水準 {level_a} 的數據: {current_data}")
+                    formatted_data = {}
+                    for sensor_type, measurements in current_data.items():
+                        if measurements:
+                            formatted_data[sensor_type] = measurements[-1]
+                    st.session_state.experiment_settings['level_history']['A'][level_a].append(formatted_data)
         
         with col2:
             st.subheader("因子 B (轉速)")
@@ -405,14 +420,27 @@ class TaguchiUI:
             st.write("水準 2: 2000 RPM")
             st.write("水準 3: 3000 RPM")
             
+            # 添加水準選擇器
+            level_b = st.selectbox("選擇水準", ["1", "2", "3"], key="level_b")
+            
             if st.button("設定因子 B"):
                 st.session_state.experiment_settings['current_factor'] = 'B'
                 st.session_state.experiment_settings['experiment_running'] = True
-                # 發布控制因子設定到 MQTT
+                # 根據選擇的水準發布對應的值
+                level_values = {"1": "1000", "2": "2000", "3": "3000"}
                 st.session_state.mqtt_manager.client.publish(
                     "jetsion/taguchi/device001/control_factors/B",
-                    "1000"  # 預設使用水準 1 的值
+                    level_values[level_b]
                 )
+                # 收集當前數據到 level_history
+                current_data = st.session_state.mqtt_manager.get_data()
+                if current_data:
+                    logger.info(f"收集因子 B 水準 {level_b} 的數據: {current_data}")
+                    formatted_data = {}
+                    for sensor_type, measurements in current_data.items():
+                        if measurements:
+                            formatted_data[sensor_type] = measurements[-1]
+                    st.session_state.experiment_settings['level_history']['B'][level_b].append(formatted_data)
         
         with col3:
             st.subheader("因子 C (電流)")
@@ -420,14 +448,27 @@ class TaguchiUI:
             st.write("水準 2: 10 A")
             st.write("水準 3: 15 A")
             
+            # 添加水準選擇器
+            level_c = st.selectbox("選擇水準", ["1", "2", "3"], key="level_c")
+            
             if st.button("設定因子 C"):
                 st.session_state.experiment_settings['current_factor'] = 'C'
                 st.session_state.experiment_settings['experiment_running'] = True
-                # 發布控制因子設定到 MQTT
+                # 根據選擇的水準發布對應的值
+                level_values = {"1": "5", "2": "10", "3": "15"}
                 st.session_state.mqtt_manager.client.publish(
                     "jetsion/taguchi/device001/control_factors/C",
-                    "5"  # 預設使用水準 1 的值
+                    level_values[level_c]
                 )
+                # 收集當前數據到 level_history
+                current_data = st.session_state.mqtt_manager.get_data()
+                if current_data:
+                    logger.info(f"收集因子 C 水準 {level_c} 的數據: {current_data}")
+                    formatted_data = {}
+                    for sensor_type, measurements in current_data.items():
+                        if measurements:
+                            formatted_data[sensor_type] = measurements[-1]
+                    st.session_state.experiment_settings['level_history']['C'][level_c].append(formatted_data)
         
         # 顯示當前實驗狀態
         st.subheader("當前實驗狀態")
@@ -445,6 +486,11 @@ class TaguchiUI:
             st.subheader("各水準數據比較")
             level_history = st.session_state.experiment_settings['level_history'][current_factor]
             
+            # 加入 log 輸出
+            logger.info(f"開始生成各水準數據比較圖表，當前因子: {current_factor}")
+            logger.info(f"level_history: {level_history}")
+            logger.info(f"當前數據緩衝區: {st.session_state.mqtt_manager.get_data()}")
+            
             # 創建比較圖表
             for sensor_type in ['pressure', 'vibration', 'rpm', 'current']:
                 st.write(f"{sensor_type} 數據比較")
@@ -452,15 +498,26 @@ class TaguchiUI:
                 
                 for level in ['1', '2', '3']:
                     if level_history[level]:
-                        values = [data[sensor_type]['value'] for data in level_history[level] if data[sensor_type]]
-                        if values:
-                            fig.add_trace(go.Box(
-                                y=values,
-                                name=f"水準 {level}",
-                                boxpoints='all',
-                                jitter=0.3,
-                                pointpos=-1.8
-                            ))
+                        try:
+                            values = []
+                            for data in level_history[level]:
+                                if sensor_type in data and isinstance(data[sensor_type], dict) and 'value' in data[sensor_type]:
+                                    values.append(data[sensor_type]['value'])
+                            if values:
+                                fig.add_trace(go.Box(
+                                    y=values,
+                                    name=f"水準 {level}",
+                                    boxpoints='all',
+                                    jitter=0.3,
+                                    pointpos=-1.8
+                                ))
+                                logger.info(f"水準 {level} 的 {sensor_type} 數據: {values}")
+                            else:
+                                logger.warning(f"水準 {level} 的 {sensor_type} 數據為空")
+                        except Exception as e:
+                            logger.error(f"處理水準 {level} 的 {sensor_type} 數據時發生錯誤: {str(e)}")
+                    else:
+                        logger.warning(f"水準 {level} 的歷史數據為空")
                 
                 fig.update_layout(
                     title=f"{sensor_type} 各水準數據分布",
@@ -468,6 +525,8 @@ class TaguchiUI:
                     showlegend=True
                 )
                 st.plotly_chart(fig, use_container_width=True)
+            
+            logger.info("各水準數據比較圖表生成完成")
             
             # 添加停止實驗的按鈕
             if st.button("停止實驗"):
